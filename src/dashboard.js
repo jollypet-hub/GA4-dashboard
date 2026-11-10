@@ -34,14 +34,21 @@ export function createDashboard({ config, store, ga4, googleLogin, chat }) {
   const session = createSessionCookie({ name: '__Host-ga4mcp_view', secret: config.sessionSecret, ttlSec: config.adminSessionTtlSec });
   const isAllowed = async (email) => isAdmin(config, email) || !!(await store.getUser(normalizeEmail(email)));
   const cache = new Map();
+  const inflight = new Map();
 
+  // 同一期間的請求正在查詢時，共用同一份結果，不重複打 GA4
   async function cached(key, fn) {
     const hit = cache.get(key);
     if (hit && hit.expires > Date.now()) return { ...hit.value, cached: true };
-    const value = await fn();
-    cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
-    if (cache.size > 200) cache.delete(cache.keys().next().value);
-    return value;
+    if (inflight.has(key)) return inflight.get(key);
+    const p = (async () => {
+      const value = await fn();
+      cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
+      if (cache.size > 200) cache.delete(cache.keys().next().value);
+      return value;
+    })().finally(() => inflight.delete(key));
+    inflight.set(key, p);
+    return p;
   }
 
   // 每次請求都重新檢查白名單，移除使用者立即生效

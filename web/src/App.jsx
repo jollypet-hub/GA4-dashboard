@@ -48,12 +48,20 @@ export default function App() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getSummary({ start: range.start, end: range.end, compare })
-      .then((d) => !cancelled && setData(d))
-      .catch((e) => !cancelled && setError(e.message))
-      .finally(() => !cancelled && setLoading(false));
+    // 自訂日期時手機的日期選單會連續觸發變更，等使用者停手再查詢
+    const timer = setTimeout(() => {
+      getSummary({ start: range.start, end: range.end, compare })
+        .then((d) => !cancelled && setData(d))
+        .catch((e) => {
+          if (cancelled) return;
+          setError(e.message);
+          setData(null); // 不要把上一個期間的數字留在新期間底下
+        })
+        .finally(() => !cancelled && setLoading(false));
+    }, range.preset === 'custom' ? 700 : 0);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [range?.start, range?.end, compare]);
 
