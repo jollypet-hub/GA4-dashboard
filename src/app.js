@@ -17,7 +17,7 @@ export function createApp({ config, store, googleLogin, ga4 }) {
   const admin = createAdmin({ config, store, googleLogin });
   const mcpUrl = new URL(config.mcpUrl);
 
-  app.get('/healthz', (_req, res) => res.type('text').send('ok'));
+  app.get('/health', (_req, res) => res.type('text').send('ok'));
   app.get('/', (_req, res) => res.type('text').send('GA4 MCP 連接服務。管理頁：/admin'));
 
   // OAuth 授權伺服器：/authorize /token /register /revoke 與 .well-known 中繼資料
