@@ -6,6 +6,16 @@ import { audit } from './audit.js';
 import { DateRangeError, previousPeriod, validateRange } from './ga4/dates.js';
 import { Ga4Error } from './ga4/client.js';
 import { buildOverviewRequest, parseOverview } from './ga4/overview.js';
+import { dataHealth, devices, funnel, products, trafficSources } from './ga4/reports.js';
+
+// 各工具共用的日期與資源參數
+const RANGE_SCHEMA = {
+  start_date: z.string().describe('開始日期 YYYY-MM-DD'),
+  end_date: z.string().describe('結束日期 YYYY-MM-DD（含當天）'),
+  property_id: z.string().regex(/^\d+$/).optional().describe('GA4 資源 ID，省略則用預設資源'),
+};
+const COMPARE_SCHEMA = { compare: z.boolean().default(true).describe('是否與緊接在前、天數相同的前期比較，預設 true') };
+const DATE_HINT = '日期必須是 YYYY-MM-DD 絕對日期（請先換算「上週」等相對說法）。';
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 
@@ -90,6 +100,62 @@ export function buildMcpServer({ config, store, ga4, authInfo }) {
         const response = await ga4.runReport(buildOverviewRequest(propertyId, current, previous));
         return parseOverview(response, { propertyId, current, previous });
       }),
+  );
+
+  // 第 3 階段工具：共用「驗證日期 → 執行報表」流程
+  const reportTool = (name, title, description, extraSchema, run) =>
+    server.registerTool(
+      name,
+      { title, description: `${description}${DATE_HINT}`, inputSchema: { ...RANGE_SCHEMA, ...extraSchema }, annotations: READ_ONLY },
+      async (args) =>
+        guarded(name, args, async (propertyId) => {
+          const current = validateRange(args.start_date, args.end_date, config.maxRangeDays);
+          const previous = args.compare === true ? previousPeriod(current) : null;
+          return run({ ga4, propertyId, current, previous, args });
+        }),
+    );
+
+  reportTool(
+    'ga4_traffic_sources',
+    'GA4 流量來源',
+    '依來源／媒介列出工作階段、使用者、交易、購買營收、購買轉換率、客單價；與前期比較時依工作階段增減排序，並標示各來源占整體增減的比例，用來找出流量或成交變化的原因。',
+    { ...COMPARE_SCHEMA, limit: z.number().int().min(1).max(50).default(15).describe('最多列出幾個來源，預設 15') },
+    ({ args, ...ctx }) => trafficSources({ ...ctx, limit: args.limit ?? 15 }),
+  );
+
+  reportTool(
+    'ga4_devices',
+    'GA4 裝置比較',
+    '依裝置類別（手機、電腦、平板）比較工作階段、交易、購買營收、購買轉換率與客單價，可與前期比較。',
+    COMPARE_SCHEMA,
+    ({ args: _a, ...ctx }) => devices(ctx),
+  );
+
+  reportTool(
+    'ga4_products',
+    'GA4 商品表現',
+    '依商品列出瀏覽、加入購物車、購買件數與商品營收，並計算瀏覽→加車、瀏覽→購買比例，標示「高瀏覽低成交」的商品。',
+    {
+      sort_by: z.enum(['views', 'add_to_carts', 'purchases', 'revenue']).default('views').describe('排序依據，預設瀏覽數'),
+      limit: z.number().int().min(1).max(50).default(20).describe('最多列出幾個商品，預設 20'),
+    },
+    ({ args, ...ctx }) => products({ ...ctx, sortBy: args.sort_by ?? 'views', limit: args.limit ?? 20 }),
+  );
+
+  reportTool(
+    'ga4_funnel',
+    'GA4 購買流程',
+    '封閉式使用者漏斗：瀏覽商品 → 加入購物車 → 開始結帳 → 完成購買，回傳各步驟人數、完成率與流失率。若漏斗 API 無法使用，會改回傳事件總量並明確標示不是逐步流失率。',
+    {},
+    ({ args: _a, ...ctx }) => funnel(ctx),
+  );
+
+  reportTool(
+    'ga4_data_health',
+    'GA4 資料健康檢查',
+    '檢查期間內的資料品質：沒有流量的日子、工作階段異常波動、關鍵電商事件缺漏、purchase 事件重複觸發（可能重複計算營收）、缺少交易 ID、零營收交易。分析營收前建議先執行。',
+    {},
+    ({ args: _a, ...ctx }) => dataHealth(ctx),
   );
 
   return server;
