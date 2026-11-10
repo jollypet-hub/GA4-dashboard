@@ -75,7 +75,9 @@ input[type=email]{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radiu
 ul.users{list-style:none;padding:0;margin:8px 0 0}ul.users li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}button.small{padding:6px 10px;font-size:14px}
 .msg{padding:10px 12px;border-radius:8px;border:1px solid var(--line);margin-bottom:16px}
+.back{display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;padding:8px 14px;min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none;font-size:15px}
 </style></head><body><main>
+<a class="back" href="/dashboard">← 返回儀表板</a>
 <h1>GA4 連接服務管理</h1><p class="mute">登入：${esc(email)}</p>
 ${msg ? `<div class="msg">${esc(msg)}</div>` : ''}
 <div class="card">
@@ -86,7 +88,7 @@ ${msg ? `<div class="msg">${esc(msg)}</div>` : ''}
 <button class="primary" type="submit">${on ? '關閉存取' : '開啟存取'}</button></form>
 </div>
 <div class="card">
-<div class="mute">可使用 Claude 連接器的帳號</div>
+<div class="mute">可使用儀表板與 Claude 連接器的帳號</div>
 <ul class="users">
 ${config.allowedEmails.map((e) => `<li><span>${esc(e)}</span><span class="tag">管理員</span></li>`).join('')}
 ${users.map((u) => `<li><span>${esc(u.id)}<br><span class="mute">${esc(u.addedAt?.slice(0, 10))} 由 ${esc(u.addedBy)} 加入</span></span>
@@ -95,7 +97,7 @@ ${users.map((u) => `<li><span>${esc(u.id)}<br><span class="mute">${esc(u.addedAt
 <form class="row" method="post" action="/admin/users/add">
 <input type="email" name="email" required placeholder="name@${esc(config.allowedDomains[0] ?? '')}" autocomplete="off">
 <button class="primary" type="submit">加入</button></form>
-<p class="mute">只能加入 ${config.allowedDomains.map((d) => `@${esc(d)}`).join('、')} 的帳號。一般使用者只能透過 Claude 查詢，不能進此管理頁；移除後立即失效。管理員需修改 Cloud Run 環境變數 ALLOWED_EMAILS。</p>
+<p class="mute">只能加入 ${config.allowedDomains.map((d) => `@${esc(d)}`).join('、')} 的帳號。一般使用者可以看儀表板、透過 Claude 查詢，但不能進此管理頁；移除後立即失效。管理員需修改 Cloud Run 環境變數 ALLOWED_EMAILS。</p>
 </div>
 <div class="card">
 <div class="mute">允許的 GA4 資源</div><div>${config.allowedPropertyIds.map(esc).join('、')}</div>
