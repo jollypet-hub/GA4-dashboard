@@ -56,7 +56,30 @@ npm test
 
 測試使用記憶體儲存、假 Google 登入、假 GA4 回應，涵蓋：授權流程、PKCE、授權碼不可重用、白名單、redirect URI 限制、開關、資源白名單、日期檢查、no_data、權杖輪替、撤銷。
 
-## 部署步驟（第 3 階段，執行前會先確認）
+## 自動部署
+
+push 到 `main` 後，GitHub Actions（`.github/workflows/deploy.yml`）會依序：
+1. 執行測試，失敗就停止。
+2. 以 Workload Identity Federation 換取短期憑證，沒有任何金鑰。
+3. `gcloud run deploy --source .`，環境變數與 Secret 沿用 Cloud Run 上的設定。
+4. 上線檢查：確認 `/health` 回 `ok`、未授權呼叫 `/mcp` 回 401。
+
+只改 `.md` 檔不會觸發部署。也可以在 Actions 頁面手動執行（workflow_dispatch）。
+
+信任範圍：
+- 只有 repository_id `1452222425`、owner `jollypet-hub`、`refs/heads/main` 能取得部署身分。
+- fork 出去的 repo 無法使用。
+
+部署身分 `ga4-mcp-deployer` 只有以下權限，不能讀 GA4 或 Secret：
+- `roles/run.sourceDeveloper`
+- `roles/serviceusage.serviceUsageConsumer`
+- 以 runner 與建置帳號身分部署（serviceAccountUser）
+
+一次性設定腳本：`scripts/setup-cicd.sh`，在 Cloud Shell 執行，可重複執行。
+
+需要的 repo Variables：`GCP_PROJECT`、`GCP_WIF_PROVIDER`、`GCP_DEPLOY_SA`。
+
+## 首次部署步驟（已完成，留作重建參考）
 
 1. 建立 OAuth 同意畫面（內部）與「網頁應用程式」用戶端，重新導向 URI：
    `https://ga4-mcp-PROJECT_NUMBER.asia-east1.run.app/oauth/google/callback`
