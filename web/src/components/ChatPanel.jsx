@@ -61,7 +61,7 @@ export default function ChatPanel({ open, onClose, aiEnabled, range, pending, on
     try {
       const history = next.filter((m) => m.role === 'user' || m.role === 'assistant').map(({ role, content }) => ({ role, content }));
       const out = await askAi({ messages: history, start: range.start, end: range.end });
-      setMessages([...next, { role: 'assistant', content: out.reply, tools: out.tools }]);
+      setMessages([...next, { role: 'assistant', content: out.reply, tools: out.tools, provider: out.provider }]);
     } catch (err) {
       setMessages([...next, { role: 'error', content: err.message }]);
     } finally {
@@ -112,6 +112,7 @@ export default function ChatPanel({ open, onClose, aiEnabled, range, pending, on
                   ))}
                 </div>
               )}
+              {m.provider === 'gemini' && <div className="msg-provider">本次由 Gemini 回答（Claude 暫時無法使用）</div>}
             </div>
           ),
         )}

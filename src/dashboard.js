@@ -159,7 +159,7 @@ export function createDashboard({ config, store, ga4, googleLogin, chat }) {
       const { current } = parseRange(req.body ?? {});
       const period = `${current.startDate} 至 ${current.endDate}`;
       const out = await chat.ask({ messages: req.body?.messages, period, today: taipeiToday() });
-      audit({ event: 'ai_chat', email: req.viewerEmail, status: 'ok', count: out.tools.length, ms: Date.now() - started });
+      audit({ event: 'ai_chat', email: req.viewerEmail, status: 'ok', kind: out.provider, count: out.tools.length, ms: Date.now() - started });
       res.json(out);
     } catch (err) {
       audit({ event: 'ai_chat', email: req.viewerEmail, status: 'error', reason: String(err?.status ?? err?.constructor?.name), ms: Date.now() - started });

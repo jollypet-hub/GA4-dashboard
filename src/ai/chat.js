@@ -53,7 +53,18 @@ export function sanitizeHistory(messages) {
   return cleaned;
 }
 
-export function createChat({ config, ga4, client }) {
+export const FALLBACK_MODEL = process.env.FALLBACK_MODEL || 'gemini-3.5-flash';
+const NO_ANSWER = '（AI 沒有產生回答，請換個方式再問一次。）';
+const TOO_MANY = '這個問題需要查太多資料了，請把問題拆小一點再問。';
+
+// Claude 配額不足、模型未啟用、暫時故障或連線失敗時，改用 Gemini 回答
+export function shouldFallback(err) {
+  const status = Number(err?.status);
+  if (!status) return true;
+  return status === 429 || status === 403 || status === 404 || status === 529 || status >= 500;
+}
+
+export function createChat({ config, ga4, client, gemini }) {
   async function runTool(name, input) {
     const propertyId = config.defaultPropertyId;
     const current = validateRange(input.start_date, input.end_date, config.maxRangeDays);
@@ -79,53 +90,102 @@ export function createChat({ config, ga4, client }) {
     }
   }
 
+  // 執行一次工具並整理成文字結果；錯誤只回傳可對外說明的訊息
+  async function callTool(name, input, used) {
+    used.push({ name, start_date: input?.start_date, end_date: input?.end_date });
+    try {
+      return { ok: true, text: JSON.stringify(await runTool(name, input ?? {})) };
+    } catch (err) {
+      return { ok: false, text: err instanceof DateRangeError || err instanceof Ga4Error ? err.message : '查詢失敗' };
+    }
+  }
+
+  async function askClaude(history, system) {
+    const convo = [...history];
+    const used = [];
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const res = await client.messages.create({
+        model: CHAT_MODEL,
+        max_tokens: 2000,
+        system,
+        tools: TOOLS,
+        messages: [...convo],
+      });
+      if (res.stop_reason !== 'tool_use') {
+        const reply = (res.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+        return { reply: reply || NO_ANSWER, tools: used };
+      }
+      convo.push({ role: 'assistant', content: res.content });
+      const results = [];
+      for (const block of res.content.filter((b) => b.type === 'tool_use')) {
+        const r = await callTool(block.name, block.input, used);
+        results.push({ type: 'tool_result', tool_use_id: block.id, content: r.text, ...(r.ok ? {} : { is_error: true }) });
+      }
+      convo.push({ role: 'user', content: results });
+    }
+    return { reply: TOO_MANY, tools: used };
+  }
+
+  const geminiTools = [
+    { functionDeclarations: TOOLS.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema })) },
+  ];
+
+  async function askGemini(history, system) {
+    const contents = history.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+    const used = [];
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const res = await gemini.models.generateContent({
+        model: FALLBACK_MODEL,
+        contents: [...contents],
+        config: { systemInstruction: system, tools: geminiTools, maxOutputTokens: 2000 },
+      });
+      const calls = res.functionCalls ?? [];
+      if (!calls.length) return { reply: (res.text ?? '').trim() || NO_ANSWER, tools: used };
+      contents.push(res.candidates?.[0]?.content ?? { role: 'model', parts: calls.map((c) => ({ functionCall: c })) });
+      const parts = [];
+      for (const c of calls) {
+        const r = await callTool(c.name, c.args, used);
+        parts.push({ functionResponse: { id: c.id, name: c.name, response: r.ok ? { result: r.text } : { error: r.text } } });
+      }
+      contents.push({ role: 'user', parts });
+    }
+    return { reply: TOO_MANY, tools: used };
+  }
+
   return {
-    // 回傳 { reply, tools }；tools 只列出工具名稱與期間，供畫面顯示「AI 查了什麼」
+    // 回傳 { reply, tools, provider }；tools 只列出工具名稱與期間，供畫面顯示「AI 查了什麼」
     async ask({ messages, period, today }) {
       const history = sanitizeHistory(messages);
       if (!history.length) throw new Error('沒有問題內容');
-      const convo = [...history];
-      const used = [];
-
-      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const res = await client.messages.create({
-          model: CHAT_MODEL,
-          max_tokens: 2000,
-          system: systemPrompt({ period, today }),
-          tools: TOOLS,
-          messages: [...convo],
-        });
-        if (res.stop_reason !== 'tool_use') {
-          const reply = (res.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-          return { reply: reply || '（AI 沒有產生回答，請換個方式再問一次。）', tools: used };
+      const system = systemPrompt({ period, today });
+      try {
+        return { ...(await askClaude(history, system)), provider: 'claude' };
+      } catch (err) {
+        if (!gemini || !shouldFallback(err)) throw err;
+        console.error(JSON.stringify({ severity: 'WARNING', message: 'claude_fallback', status: err?.status ?? null }));
+        try {
+          return { ...(await askGemini(history, system)), provider: 'gemini', fallbackStatus: err?.status ?? null };
+        } catch (gErr) {
+          console.error(JSON.stringify({ severity: 'ERROR', message: 'gemini_failed', status: gErr?.status ?? null, error: String(gErr?.message || gErr) }));
+          throw err; // 回報原本 Claude 的錯誤，前端訊息較明確
         }
-        convo.push({ role: 'assistant', content: res.content });
-        const results = [];
-        for (const block of res.content.filter((b) => b.type === 'tool_use')) {
-          used.push({ name: block.name, start_date: block.input?.start_date, end_date: block.input?.end_date });
-          let content;
-          let isError = false;
-          try {
-            content = JSON.stringify(await runTool(block.name, block.input ?? {}));
-          } catch (err) {
-            isError = true;
-            content = err instanceof DateRangeError || err instanceof Ga4Error ? err.message : '查詢失敗';
-          }
-          results.push({ type: 'tool_result', tool_use_id: block.id, content, ...(isError ? { is_error: true } : {}) });
-        }
-        convo.push({ role: 'user', content: results });
       }
-      return { reply: '這個問題需要查太多資料了，請把問題拆小一點再問。', tools: used };
     },
   };
 }
 
-// 正式環境的 Vertex 用戶端；專案 ID 由執行環境自動取得
+async function projectId() {
+  const { GoogleAuth } = await import('google-auth-library');
+  return process.env.GCP_PROJECT || new GoogleAuth().getProjectId();
+}
+
+// 正式環境的 Vertex 用戶端；專案 ID 由執行環境自動取得，不使用金鑰
 export async function createVertexClient() {
-  const [{ AnthropicVertex }, { GoogleAuth }] = await Promise.all([
-    import('@anthropic-ai/vertex-sdk'),
-    import('google-auth-library'),
-  ]);
-  const projectId = process.env.GCP_PROJECT || (await new GoogleAuth().getProjectId());
-  return new AnthropicVertex({ projectId, region: process.env.VERTEX_REGION || 'global' });
+  const { AnthropicVertex } = await import('@anthropic-ai/vertex-sdk');
+  return new AnthropicVertex({ projectId: await projectId(), region: process.env.VERTEX_REGION || 'global' });
+}
+
+export async function createGeminiClient() {
+  const { GoogleGenAI } = await import('@google/genai');
+  return new GoogleGenAI({ vertexai: true, project: await projectId(), location: process.env.GEMINI_LOCATION || 'global' });
 }
