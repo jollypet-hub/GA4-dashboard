@@ -13,7 +13,8 @@ import { createSessionCookie, isSameOrigin } from './session.js';
 import { DateRangeError, previousPeriod, validateRange } from './ga4/dates.js';
 import { Ga4Error } from './ga4/client.js';
 import { buildOverviewRequest, parseOverview } from './ga4/overview.js';
-import { dailyTrend, dataHealth, devices, trafficSources } from './ga4/reports.js';
+import { dailyTrend, dataHealth, devices, funnel, trafficSources } from './ga4/reports.js';
+import { merchandise } from './ga4/merch.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../web/dist');
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -150,6 +151,26 @@ export function createDashboard({ config, store, ga4, googleLogin, chat }) {
       res.json(result);
     } catch (err) {
       audit({ event: 'dashboard_view', email: req.viewerEmail, status: 'error', reason: err?.constructor?.name, ms: Date.now() - started });
+      fail(res, err);
+    }
+  });
+
+  // 商品表現＋購買流程：與總覽分開載入，總覽先出來，商品區塊隨後補上
+  router.get('/api/dashboard/products', requireViewer, async (req, res) => {
+    const started = Date.now();
+    try {
+      const { current, previous } = parseRange(req.query);
+      const propertyId = config.defaultPropertyId;
+      const key = `products:${propertyId}:${current.startDate}:${current.endDate}:${previous ? 1 : 0}`;
+      const result = await cached(key, async () => {
+        const ctx = { ga4, propertyId, current, previous };
+        const [merch, flow] = await Promise.all([merchandise(ctx), funnel({ ga4, propertyId, current })]);
+        return { generatedAt: new Date().toISOString(), merch, funnel: flow };
+      });
+      audit({ event: 'dashboard_view', email: req.viewerEmail, kind: 'products', startDate: current.startDate, endDate: current.endDate, status: 'ok', ms: Date.now() - started });
+      res.json(result);
+    } catch (err) {
+      audit({ event: 'dashboard_view', email: req.viewerEmail, kind: 'products', status: 'error', reason: err?.constructor?.name, ms: Date.now() - started });
       fail(res, err);
     }
   });

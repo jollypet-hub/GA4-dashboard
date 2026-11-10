@@ -6,8 +6,11 @@ import TrendChart from './components/TrendChart.jsx';
 import SourcesTable from './components/SourcesTable.jsx';
 import DeviceChart from './components/DeviceChart.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
+import ProductsSection from './components/ProductsSection.jsx';
+import FunnelChart from './components/FunnelChart.jsx';
+import CategoryChart from './components/CategoryChart.jsx';
 import { Icon } from './components/Icons.jsx';
-import { getMe, getSummary } from './api.js';
+import { getMe, getProducts, getSummary } from './api.js';
 import { shortDate } from './format.js';
 
 const DAY = 86_400_000;
@@ -33,6 +36,9 @@ export default function App() {
   const [error, setError] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [pending, setPending] = useState(null);
+  const [prod, setProd] = useState(null);
+  const [prodLoading, setProdLoading] = useState(false);
+  const [prodError, setProdError] = useState(null);
 
   useEffect(() => {
     getMe()
@@ -58,6 +64,17 @@ export default function App() {
           setData(null); // 不要把上一個期間的數字留在新期間底下
         })
         .finally(() => !cancelled && setLoading(false));
+      // 商品區塊分開載入：總覽先出來，商品資料隨後補上
+      setProdLoading(true);
+      setProdError(null);
+      getProducts({ start: range.start, end: range.end, compare })
+        .then((d) => !cancelled && setProd(d))
+        .catch((e) => {
+          if (cancelled) return;
+          setProdError(e.message);
+          setProd(null);
+        })
+        .finally(() => !cancelled && setProdLoading(false));
     }, range.preset === 'custom' ? 700 : 0);
     return () => {
       cancelled = true;
@@ -116,6 +133,20 @@ export default function App() {
                 <SourcesTable sources={data.sources} compare={compare} onAsk={ask} />
                 <DeviceChart devices={data.devices} />
               </div>
+              {prodError && <div className="error" role="alert">無法載入商品資料：{prodError}</div>}
+              {prodLoading && !prod ? (
+                <div className="skeleton" style={{ height: 420 }} />
+              ) : (
+                prod && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20, opacity: prodLoading ? 0.55 : 1, transition: 'opacity .2s' }}>
+                    <ProductsSection merch={prod.merch} compare={compare} range={range} onAsk={ask} />
+                    <div className="row">
+                      <FunnelChart funnel={prod.funnel} onAsk={ask} />
+                      <CategoryChart categories={prod.merch?.categories} />
+                    </div>
+                  </div>
+                )
+              )}
               <p className="foot-note">
                 口徑：購買營收＝purchase 事件營收；客單價＝購買營收 ÷ 交易筆數；購買轉換率＝交易筆數 ÷ 工作階段（工作階段口徑）。
                 GA4 受 Cookie 同意與追蹤阻擋影響，與 Cyberbiz 訂單數可能不同。

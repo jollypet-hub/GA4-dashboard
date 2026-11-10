@@ -54,4 +54,19 @@ export const Icon = {
   Send: (p) => (
     <svg width="20" height="20" viewBox="0 0 24 24" {...base} {...p}><path d="M5 12h14M13 6l6 6-6 6" /></svg>
   ),
+  Star: (p) => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...base} {...p}><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z" /></svg>
+  ),
+  Download: (p) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...base} {...p}><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
+  ),
+  Funnel: (p) => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...base} {...p}><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" /></svg>
+  ),
+  Tag: (p) => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...base} {...p}><path d="M3 12V4h8l10 10-8 8L3 12z" /><circle cx="7.5" cy="8.5" r="1.3" /></svg>
+  ),
+  Eye: (p) => (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...base} {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+  ),
 };

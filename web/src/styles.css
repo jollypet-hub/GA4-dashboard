@@ -125,6 +125,68 @@ td.r, th.r { text-align: right; }
 .dev-item { display: flex; align-items: center; gap: 8px; }
 .dev-item span:last-child { margin-left: auto; color: var(--muted); }
 
+/* 商品表現 */
+.card-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.card-tools .linkbtn { gap: 6px; }
+.seg.small { padding: 3px; }
+.seg.small button { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+.merch-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 4px 0 16px; }
+.merch-stats > div { background: var(--bg); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.merch-stats span { font-size: 13px; color: var(--muted); }
+.merch-stats b { font-size: 22px; }
+.merch-stats small { font-size: 12px; color: var(--muted); }
+.merch-stats .pill { align-self: flex-start; }
+.stack { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.stack i { display: block; height: 100%; background: var(--brand-taupe); border-radius: 4px; }
+.pill.new { color: var(--purple); background: var(--purple-soft); }
+.rank { list-style: none; margin: 0; padding: 0; }
+.rank li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line-2); }
+.rank .no { width: 28px; height: 28px; border-radius: 8px; background: var(--line-2); color: var(--ink-2); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+.rank .no.top { background: var(--brand-ink); color: #fff; }
+.rank-main { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rank-main:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+.rank-main:hover .rank-name { color: var(--blue-ink); }
+.rank-name { font-size: 14px; font-weight: 600; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rank-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 12px; border-radius: 6px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; }
+.tag.star { background: #F6EFE2; color: var(--brand-taupe-ink); font-weight: 700; }
+.tag.warn { background: var(--warn-bg); color: var(--warn-ink); font-weight: 700; }
+.tag.plain { color: var(--muted); padding-left: 0; }
+.rank-bar { height: 8px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.rank-bar i { display: block; height: 100%; background: var(--brand-taupe); border-radius: 4px; }
+.rank li:nth-child(-n+3) .rank-bar i { background: var(--brand-ink); }
+.rank-val { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
+.rank-val b { font-size: 16px; white-space: nowrap; }
+.rank-val small { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.more { width: 100%; margin-top: 4px; border: 1px dashed var(--line); background: transparent; border-radius: 10px; padding: 10px; color: var(--ink-2); cursor: pointer; font-size: 14px; min-height: 42px; }
+.watch { margin-top: 16px; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 12px; padding: 14px 16px; }
+.watch h3 { margin: 0 0 4px; font-size: 15px; color: var(--warn-ink); display: flex; align-items: center; gap: 6px; }
+.watch p { margin: 0 0 10px; font-size: 13px; color: #6B4A12; }
+.watch ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.watch li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; font-size: 13px; }
+.watch li .rank-name { font-weight: 600; -webkit-line-clamp: 1; }
+.watch li button { border: 1px solid var(--warn-line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--warn-ink); cursor: pointer; min-height: 34px; }
+
+/* 購買流程、類別 */
+.funnel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fn-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 84px; gap: 10px; align-items: center; font-size: 14px; }
+.fn-name { color: var(--ink-2); }
+.fn-bar { height: 22px; border-radius: 6px; background: var(--line-2); overflow: hidden; display: block; }
+.fn-bar i { display: block; height: 100%; border-radius: 6px; }
+.fn-val { font-weight: 700; white-space: nowrap; text-align: right; }
+.fn-rate { font-size: 12px; color: var(--muted); padding: 2px 0 2px 94px; display: flex; gap: 8px; align-items: center; }
+.fn-rate.worst { color: var(--red-ink); font-weight: 700; }
+.fn-rate b { background: var(--red-soft); color: var(--red-ink); border-radius: 6px; padding: 1px 6px; }
+.cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.cat-list li { display: flex; flex-direction: column; gap: 4px; }
+.cat-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.cat-name { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-list .fn-bar { height: 10px; }
+.cat-list small { font-size: 12px; color: var(--muted); }
+.empty.left { text-align: left; display: flex; flex-direction: column; gap: 6px; background: var(--bg); border-radius: 12px; padding: 14px 16px; }
+.empty.left b { color: var(--ink); }
+
 /* 狀態 */
 .skeleton { background: linear-gradient(90deg, #EEF0F3, #F7F8FA, #EEF0F3); background-size: 200% 100%; animation: sk 1.2s infinite; border-radius: 12px; }
 @keyframes sk { to { background-position: -200% 0; } }
@@ -185,4 +247,15 @@ td.r, th.r { text-align: right; }
   .card { padding: 16px; }
   .fab { right: 16px; bottom: 16px; padding: 12px 18px; }
   .chat { width: 100vw; border-left: 0; }
+  .merch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .merch-stats .conc { grid-column: 1 / -1; }
+  .merch-stats b { font-size: 19px; }
+  .rank li { grid-template-columns: 24px minmax(0, 1fr); }
+  .rank .no { width: 24px; height: 24px; }
+  .rank-val { grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; }
+  .watch li { grid-template-columns: minmax(0, 1fr) auto; }
+  .watch li .num { grid-column: 1; grid-row: 2; color: #6B4A12; }
+  .watch li button { grid-row: 1 / span 2; grid-column: 2; }
+  .fn-row { grid-template-columns: 72px minmax(0, 1fr) 72px; }
+  .fn-rate { padding-left: 82px; }
 }

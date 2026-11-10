@@ -156,10 +156,10 @@ export async function products({ ga4, propertyId, current, limit, sortBy = 'view
 
 // 購買流程：封閉式、依序的使用者漏斗
 const FUNNEL_STEPS = [
-  { name: '1. 瀏覽商品', event: 'view_item' },
-  { name: '2. 加入購物車', event: 'add_to_cart' },
-  { name: '3. 開始結帳', event: 'begin_checkout' },
-  { name: '4. 完成購買', event: 'purchase' },
+  { name: '瀏覽商品', event: 'view_item' },
+  { name: '加入購物車', event: 'add_to_cart' },
+  { name: '開始結帳', event: 'begin_checkout' },
+  { name: '完成購買', event: 'purchase' },
 ];
 
 export async function funnel({ ga4, propertyId, current }) {
@@ -175,15 +175,27 @@ export async function funnel({ ga4, propertyId, current }) {
 
   try {
     const response = await ga4.runFunnelReport(request);
-    const rows = parseTable(response.funnelTable ?? {});
+    const table = response.funnelTable ?? {};
+    const rows = parseTable(table).filter((r) => !r.funnelStepName?.includes('RESERVED_TOTAL'));
     const base = { property_id: propertyId, period: current, quota_tokens_remaining_today: response.propertyQuota?.tokensPerDay?.remaining ?? null };
     if (rows.length === 0) return { ...base, status: 'no_data', method: 'funnel', message: NO_DATA_MESSAGE };
+    // 漏斗 API（alpha）偶有欄位對不上、數值全空的情況：記下欄位結構（只有彙總數字）並改用事件人數
+    if (rows.every((r) => r.activeUsers === null || r.activeUsers === undefined)) {
+      console.error(JSON.stringify({
+        severity: 'WARNING',
+        message: 'funnel_empty_values',
+        dims: (table.dimensionHeaders ?? []).map((h) => h.name),
+        mets: (table.metricHeaders ?? []).map((h) => h.name),
+        sample: JSON.stringify(table.rows?.[0] ?? null).slice(0, 500),
+      }));
+      throw new Ga4Error('漏斗數值為空', { code: 12 });
+    }
     return {
       ...base,
       status: 'ok',
       method: 'funnel',
       steps: rows.map((r) => ({
-        step: r.funnelStepName,
+        step: String(r.funnelStepName ?? '').replace(/^\d+\.\s*/, ''),
         active_users: r.activeUsers,
         completion_rate: round(r.funnelStepCompletionRate, 4),
         abandonments: r.funnelStepAbandonments,

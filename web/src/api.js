@@ -26,6 +26,9 @@ export const getMe = () => request('/api/dashboard/me');
 export const getSummary = ({ start, end, compare }) =>
   request(`/api/dashboard/summary?${new URLSearchParams({ start, end, compare: compare ? '1' : '0' })}`);
 
+export const getProducts = ({ start, end, compare }) =>
+  request(`/api/dashboard/products?${new URLSearchParams({ start, end, compare: compare ? '1' : '0' })}`);
+
 export const newJobId = () => crypto.randomUUID().replace(/-/g, '');
 export const getAiJob = (jobId) => request(`/api/dashboard/chat/${jobId}`);
 

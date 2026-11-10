@@ -4,6 +4,8 @@ const nf = new Intl.NumberFormat('zh-TW');
 
 export const num = (v) => (v === null || v === undefined ? '—' : nf.format(Math.round(v)));
 export const twd = (v) => (v === null || v === undefined ? '—' : `NT$${nf.format(Math.round(v))}`);
+// 小於 1% 的比率自動多顯示一位小數，避免 0.03% 被顯示成 0.0%
+export const ratePct = (v) => (v === null || v === undefined ? '—' : pct(v, v > 0 && v < 0.01 ? 2 : 1));
 export const pct = (v, digits = 2) => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(digits)}%`);
 
 // 百分比變化（後端已算好的 change_pct，單位是 %）
