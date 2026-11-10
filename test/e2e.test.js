@@ -272,3 +272,59 @@ test('撤銷所有連線後無法再取資料', async () => {
   const r = await mcp(accessToken, 'tools/list');
   assert.equal(r.status, 401);
 });
+
+// ---- 白名單管理 ----
+async function adminCookie() {
+  const first = await get('/admin');
+  const pendingState = new URL(first.headers.get('location')).searchParams.get('state');
+  const cb = await get(`/oauth/google/callback?state=${encodeURIComponent(pendingState)}&code=${ALLOWED}`);
+  return cb.headers.get('set-cookie').split(';')[0];
+}
+const MEMBER = 'member@example.com';
+
+test('白名單：未加入前一般帳號無法連線', async () => {
+  const { back } = await loginAs(MEMBER);
+  assert.equal(back.searchParams.get('error'), 'access_denied');
+});
+
+test('白名單：管理員可加入同網域帳號，外部網域與格式錯誤被拒', async () => {
+  const cookie = await adminCookie();
+  const h = { cookie, origin: BASE };
+  const evil = await post('/admin/users/add', { email: 'x@evil.com' }, h);
+  assert.match(decodeURIComponent(evil.headers.get('location')), /無法加入/);
+  const bad = await post('/admin/users/add', { email: 'not-an-email' }, h);
+  assert.match(decodeURIComponent(bad.headers.get('location')), /格式不正確/);
+  const noOrigin = await post('/admin/users/add', { email: MEMBER }, { cookie });
+  assert.equal(noOrigin.status, 403, '缺少來源應被拒');
+
+  const ok = await post('/admin/users/add', { email: ' Member@Example.com ' }, h);
+  assert.match(decodeURIComponent(ok.headers.get('location')), /已加入 member@example.com/);
+  assert.ok(await store.getUser(MEMBER), '應以小寫儲存');
+  const page = await (await get('/admin', { headers: { cookie } })).text();
+  assert.match(page, /member@example\.com/);
+});
+
+let memberToken;
+test('白名單：加入後可連線查詢，但不能進管理頁', async () => {
+  const { back, verifier } = await loginAs(MEMBER);
+  const ok = await exchange(back.searchParams.get('code'), verifier);
+  assert.equal(ok.status, 200);
+  memberToken = ok.body.access_token;
+  assert.equal((await mcp(memberToken, 'tools/list')).status, 200);
+
+  const first = await get('/admin');
+  const pendingState = new URL(first.headers.get('location')).searchParams.get('state');
+  const cb = await get(`/oauth/google/callback?state=${encodeURIComponent(pendingState)}&code=${MEMBER}`);
+  assert.equal(cb.status, 403);
+  assert.match(await cb.text(), /沒有管理權限/);
+});
+
+test('白名單：移除後權杖立即失效；管理員不能被移除', async () => {
+  const cookie = await adminCookie();
+  const h = { cookie, origin: BASE };
+  const rm = await post('/admin/users/remove', { email: MEMBER }, h);
+  assert.match(decodeURIComponent(rm.headers.get('location')), /已移除 member@example.com，並撤銷 2 個權杖/);
+  assert.equal((await mcp(memberToken, 'tools/list')).status, 401);
+  const admin = await post('/admin/users/remove', { email: ALLOWED }, h);
+  assert.match(decodeURIComponent(admin.headers.get('location')), /管理員不能/);
+});

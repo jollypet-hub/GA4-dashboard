@@ -21,6 +21,7 @@ const C = {
   codes: 'oauth_codes',
   tokens: 'oauth_tokens',
   settings: 'settings',
+  users: 'allowed_users',
 };
 const ACCESS_DOC = 'access';
 
@@ -53,6 +54,10 @@ class FirestoreStore {
       tx.delete(ref);
       return snap.data();
     });
+  }
+  async list(colName) {
+    const snap = await (await this.col(colName)).limit(500).get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }
   async deleteWhere(colName, field, value) {
     const col = await this.col(colName);
@@ -91,6 +96,9 @@ class MemoryStore {
     const v = await this.get(c, id);
     this.m(c).delete(id);
     return v;
+  }
+  async list(c) {
+    return [...this.m(c).entries()].map(([id, v]) => ({ id, ...structuredClone(v) }));
   }
   async deleteWhere(c, field, value) {
     let n = 0;
@@ -148,6 +156,13 @@ export function createStore() {
     deleteToken: (token) => raw.del(C.tokens, sha256(token)),
     deleteGrant: (grantId) => raw.deleteWhere(C.tokens, 'grantId', grantId),
     deleteAllTokens: () => raw.deleteWhere(C.tokens, null, null),
+
+    // 一般使用者白名單（管理員另外由環境變數設定）
+    listUsers: async () => (await raw.list(C.users)).sort((a, b) => a.id.localeCompare(b.id)),
+    getUser: (email) => raw.get(C.users, email),
+    addUser: (email, by) => raw.set(C.users, email, { addedBy: by, addedAt: new Date().toISOString() }),
+    removeUser: (email) => raw.del(C.users, email),
+    deleteTokensByEmail: (email) => raw.deleteWhere(C.tokens, 'email', email),
 
     // 資料存取開關：沒有紀錄時視為「關閉」
     getAccessSwitch: async () => {

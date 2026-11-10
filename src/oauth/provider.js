@@ -9,12 +9,14 @@ import {
   InvalidScopeError,
   InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import { isEmailAllowed } from '../config.js';
+import { isAdmin, normalizeEmail } from '../config.js';
 import { randomToken, toMillis } from '../store.js';
 import { audit } from '../audit.js';
 
 export function createOAuthProvider({ config, store, googleLogin }) {
   const redirectAllowed = (uri) => config.allowedRedirectUris.includes(uri);
+  // 可使用連接器：管理員，或管理頁加入的一般使用者（每次都查最新名單，移除立即生效）
+  const isAllowed = async (email) => isAdmin(config, email) || !!(await store.getUser(normalizeEmail(email)));
 
   async function issueTokens({ clientId, email, scopes, grantId }) {
     const accessToken = randomToken();
@@ -80,7 +82,7 @@ export function createOAuthProvider({ config, store, googleLogin }) {
       const code = await store.takeCode(authorizationCode);
       if (!code || code.clientId !== client.client_id) throw new InvalidGrantError('授權碼無效或已過期');
       if (redirectUri && redirectUri !== code.redirectUri) throw new InvalidGrantError('redirect_uri 不一致');
-      if (!isEmailAllowed(config, code.email)) throw new InvalidGrantError('帳號不在允許清單內');
+      if (!(await isAllowed(code.email))) throw new InvalidGrantError('帳號不在允許清單內');
       const tokens = await issueTokens({
         clientId: client.client_id,
         email: code.email,
@@ -98,7 +100,7 @@ export function createOAuthProvider({ config, store, googleLogin }) {
       }
       // 換發時作廢同一授權的舊權杖（權杖輪替）
       await store.deleteGrant(old.grantId);
-      if (!isEmailAllowed(config, old.email)) throw new InvalidGrantError('帳號已不在允許清單內');
+      if (!(await isAllowed(old.email))) throw new InvalidGrantError('帳號已不在允許清單內');
       if (scopes?.length && !scopes.every((s) => old.scopes.includes(s))) {
         throw new InvalidScopeError('不可擴大權限範圍');
       }
@@ -108,7 +110,7 @@ export function createOAuthProvider({ config, store, googleLogin }) {
     async verifyAccessToken(token) {
       const t = await store.getToken(token);
       if (!t || t.type !== 'access') throw new InvalidTokenError('Access token is invalid or expired');
-      if (!isEmailAllowed(config, t.email)) throw new InvalidTokenError('Account is no longer allowed');
+      if (!(await isAllowed(t.email))) throw new InvalidTokenError('Account is no longer allowed');
       return {
         token,
         clientId: t.clientId,
@@ -154,12 +156,13 @@ export function createOAuthProvider({ config, store, googleLogin }) {
       console.error(JSON.stringify({ severity: 'ERROR', message: 'google_login_failed', error: String(e?.message || e) }));
       return deny('Google 登入驗證失敗');
     }
-    if (!isEmailAllowed(config, email)) return deny('此帳號沒有使用權限');
-
     if (pending.kind === 'admin') {
+      // 管理頁只限管理員
+      if (!isAdmin(config, email)) return deny('此帳號沒有管理權限');
       audit({ event: 'admin_login', email });
       return onAdminLogin(res, email);
     }
+    if (!(await isAllowed(email))) return deny('此帳號沒有使用權限');
 
     const authCode = randomToken();
     await store.saveCode(

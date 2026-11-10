@@ -19,7 +19,8 @@ Claude 自訂連接器 ──OAuth 2.1 + PKCE──► Cloud Run「ga4-mcp」
 | 不下載服務帳號私鑰 | Cloud Run 執行身分 `ga4-mcp-runner` 自動取得權杖 |
 | GA4 只給檢視者 | 在 GA4 資源存取管理加入服務帳號，角色「檢視者」 |
 | 不給專案擁有者／編輯者 | 執行身分只有 Firestore 使用者＋指定 Secret 讀取 |
-| 入口要驗證 | 自建 OAuth 授權伺服器，上游用 Google 登入，email 白名單 |
+| 入口要驗證 | 自建 OAuth 授權伺服器，上游用 Google 登入，兩層白名單：管理員（環境變數 `ALLOWED_EMAILS`）＋一般使用者（管理頁新增，存 Firestore） |
+| 白名單管理 | 只有管理員能進 `/admin`；只能加入允許網域的帳號；移除使用者時立即刪除其權杖；增刪都寫入稽核紀錄 |
 | 只接受 Claude | 動態註冊只允許 Claude 的回呼網址 |
 | 開關預設關閉、伺服器擋 | Firestore `settings/access`，無紀錄即關閉；每次工具呼叫都檢查 |
 | AI 不能自己開開關 | 開關只在 `/admin` 管理頁（需登入），沒有對應的 MCP 工具 |
@@ -94,4 +95,5 @@ push 到 `main` 後，GitHub Actions（`.github/workflows/deploy.yml`）會依�
 ## 維護備註
 
 - `npm audit` 有 6 個中度弱點，皆為 Google 官方套件底層的 `glob`／`rimraf` 間接相依，不處理使用者輸入；待上游更新。
-- 白名單調整：修改 Cloud Run 環境變數 `ALLOWED_EMAILS` 後重新部署。
+- 一般使用者：在 `/admin` 新增或移除，立即生效。
+- 管理員：修改 Cloud Run 環境變數 `ALLOWED_EMAILS`（不經過程式部署）。

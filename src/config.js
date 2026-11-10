@@ -31,6 +31,12 @@ export function loadConfig() {
   const allowedRedirectUris = list('ALLOWED_REDIRECT_URIS');
   if (allowedRedirectUris.length === 0) throw new Error('ALLOWED_REDIRECT_URIS 不可為空');
 
+  // 管理頁可新增的使用者網域；未設定時沿用管理員 email 的網域
+  const allowedDomains = list('ALLOWED_DOMAINS', { lower: true });
+  const domains = allowedDomains.length
+    ? allowedDomains
+    : [...new Set(allowedEmails.map((e) => e.split('@')[1]).filter(Boolean))];
+
   return Object.freeze({
     baseUrl,
     mcpUrl: `${baseUrl}/mcp`,
@@ -38,7 +44,8 @@ export function loadConfig() {
     googleClientSecret: required('GOOGLE_OAUTH_CLIENT_SECRET'),
     googleCallbackUrl: `${baseUrl}/oauth/google/callback`,
     sessionSecret,
-    allowedEmails,
+    allowedEmails, // 管理員：可進管理頁，不能從管理頁移除
+    allowedDomains: domains,
     allowedPropertyIds,
     defaultPropertyId: allowedPropertyIds[0],
     allowedRedirectUris,
@@ -53,6 +60,22 @@ export function loadConfig() {
   });
 }
 
-export function isEmailAllowed(config, email) {
+// 管理員（環境變數 ALLOWED_EMAILS）
+export function isAdmin(config, email) {
   return !!email && config.allowedEmails.includes(String(email).toLowerCase());
+}
+
+export const normalizeEmail = (email) => String(email ?? '').trim().toLowerCase();
+
+const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+
+// 檢查管理頁輸入的 email；回傳錯誤訊息，沒問題則回傳 null
+export function validateNewUserEmail(config, email) {
+  if (!EMAIL_RE.test(email)) return 'email 格式不正確';
+  const domain = email.split('@')[1];
+  if (!config.allowedDomains.includes(domain)) {
+    return `只能加入 ${config.allowedDomains.map((d) => `@${d}`).join('、')} 的帳號（OAuth 同意畫面為「內部」，其他網域無法登入）`;
+  }
+  if (isAdmin(config, email)) return '這個帳號已經是管理員';
+  return null;
 }

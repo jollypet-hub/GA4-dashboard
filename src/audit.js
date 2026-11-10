@@ -3,7 +3,7 @@
 
 const ALLOWED_FIELDS = new Set([
   'event', 'email', 'clientId', 'clientName', 'tool', 'propertyId', 'startDate', 'endDate',
-  'compare', 'status', 'reason', 'kind', 'ms', 'redirectUris', 'enabled', 'count',
+  'compare', 'status', 'reason', 'target', 'kind', 'ms', 'redirectUris', 'enabled', 'count',
 ]);
 
 export function audit(fields) {

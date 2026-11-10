@@ -3,7 +3,7 @@
 
 import express from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { isEmailAllowed } from './config.js';
+import { isAdmin, normalizeEmail, validateNewUserEmail } from './config.js';
 import { randomToken } from './store.js';
 import { audit } from './audit.js';
 
@@ -35,7 +35,7 @@ export function createAdmin({ config, store, googleLogin }) {
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
     if (Number(exp) < Date.now() / 1000) return null;
     const email = Buffer.from(emailB64, 'base64url').toString();
-    return isEmailAllowed(config, email) ? email : null;
+    return isAdmin(config, email) ? email : null; // 管理頁只限管理員
   }
 
   function setSessionCookie(res, value, maxAge) {
@@ -56,7 +56,7 @@ export function createAdmin({ config, store, googleLogin }) {
     }
   }
 
-  function page(email, sw, msg) {
+  function page(email, sw, msg, users) {
     const on = sw.enabled;
     return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>GA4 連接服務管理</title>
@@ -70,7 +70,11 @@ h1{font-size:20px;margin:0 0 4px}.mute{color:var(--mute);font-size:14px}
 .state{font-size:28px;font-weight:700;margin:8px 0}.on{color:var(--on)}.off{color:var(--off)}
 button{font:inherit;padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
 button.primary{background:var(--fg);color:var(--card);border-color:var(--fg)}
-form{display:inline}.msg{padding:10px 12px;border-radius:8px;border:1px solid var(--line);margin-bottom:16px}
+form{display:inline}form.row{display:flex;gap:8px;margin-top:12px}
+input[type=email]{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+ul.users{list-style:none;padding:0;margin:8px 0 0}ul.users li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.tag{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}button.small{padding:6px 10px;font-size:14px}
+.msg{padding:10px 12px;border-radius:8px;border:1px solid var(--line);margin-bottom:16px}
 </style></head><body><main>
 <h1>GA4 連接服務管理</h1><p class="mute">登入：${esc(email)}</p>
 ${msg ? `<div class="msg">${esc(msg)}</div>` : ''}
@@ -80,6 +84,18 @@ ${msg ? `<div class="msg">${esc(msg)}</div>` : ''}
 <p class="mute">${sw.updatedAt ? `最後變更：${esc(sw.updatedAt)}（${esc(sw.updatedBy)}）` : '尚未開啟過（預設關閉）'}</p>
 <form method="post" action="/admin/access"><input type="hidden" name="enabled" value="${on ? 'off' : 'on'}">
 <button class="primary" type="submit">${on ? '關閉存取' : '開啟存取'}</button></form>
+</div>
+<div class="card">
+<div class="mute">可使用 Claude 連接器的帳號</div>
+<ul class="users">
+${config.allowedEmails.map((e) => `<li><span>${esc(e)}</span><span class="tag">管理員</span></li>`).join('')}
+${users.map((u) => `<li><span>${esc(u.id)}<br><span class="mute">${esc(u.addedAt?.slice(0, 10))} 由 ${esc(u.addedBy)} 加入</span></span>
+<form method="post" action="/admin/users/remove"><input type="hidden" name="email" value="${esc(u.id)}"><button class="small" type="submit">移除</button></form></li>`).join('')}
+</ul>
+<form class="row" method="post" action="/admin/users/add">
+<input type="email" name="email" required placeholder="name@${esc(config.allowedDomains[0] ?? '')}" autocomplete="off">
+<button class="primary" type="submit">加入</button></form>
+<p class="mute">只能加入 ${config.allowedDomains.map((d) => `@${esc(d)}`).join('、')} 的帳號。一般使用者只能透過 Claude 查詢，不能進此管理頁；移除後立即失效。管理員需修改 Cloud Run 環境變數 ALLOWED_EMAILS。</p>
 </div>
 <div class="card">
 <div class="mute">允許的 GA4 資源</div><div>${config.allowedPropertyIds.map(esc).join('、')}</div>
@@ -109,8 +125,8 @@ ${msg ? `<div class="msg">${esc(msg)}</div>` : ''}
       await store.savePending(pendingId, { kind: 'admin' }, config.pendingLoginTtlSec);
       return res.redirect(googleLogin.authUrl(pendingId));
     }
-    const sw = await store.getAccessSwitch();
-    res.type('html').send(page(email, sw, req.query.msg));
+    const [sw, users] = await Promise.all([store.getAccessSwitch(), store.listUsers()]);
+    res.type('html').send(page(email, sw, req.query.msg, users));
   });
 
   const guard = (req, res, next) => {
@@ -132,6 +148,28 @@ ${msg ? `<div class="msg">${esc(msg)}</div>` : ''}
     const count = await store.deleteAllTokens();
     audit({ event: 'revoke_all', email: req.adminEmail, count });
     res.redirect(303, `/admin?msg=${encodeURIComponent(`已撤銷 ${count} 個權杖`)}`);
+  });
+
+  const back = (res, msg) => res.redirect(303, `/admin?msg=${encodeURIComponent(msg)}`);
+
+  router.post('/users/add', guard, async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+    const error = validateNewUserEmail(config, email);
+    if (error) return back(res, `無法加入：${error}`);
+    if (await store.getUser(email)) return back(res, `${email} 已在名單中`);
+    await store.addUser(email, req.adminEmail);
+    audit({ event: 'user_added', email: req.adminEmail, target: email });
+    back(res, `已加入 ${email}`);
+  });
+
+  router.post('/users/remove', guard, async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+    if (isAdmin(config, email)) return back(res, '管理員不能從管理頁移除');
+    if (!(await store.getUser(email))) return back(res, `${email} 不在名單中`);
+    await store.removeUser(email);
+    const count = await store.deleteTokensByEmail(email); // 立即撤銷他已取得的權杖
+    audit({ event: 'user_removed', email: req.adminEmail, target: email, count });
+    back(res, `已移除 ${email}，並撤銷 ${count} 個權杖`);
   });
 
   router.post('/logout', guard, (req, res) => {
