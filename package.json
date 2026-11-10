@@ -1,0 +1,23 @@
+{
+  "name": "ga4-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GA4 唯讀 MCP 連接服務（Cloud Run），供 Claude 自訂連接器使用",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@google-analytics/data": "^7.3.0",
+    "@google-cloud/firestore": "^9.4.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "express": "^5.3.0",
+    "google-auth-library": "^11.3.4",
+    "zod": "^4.6.7"
+  }
+}
