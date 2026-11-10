@@ -154,29 +154,73 @@ export function createDashboard({ config, store, ga4, googleLogin, chat }) {
     }
   });
 
+  // 「問 AI」：回答可能要 20～60 秒。前端帶一個工作編號送出，同時用 GET 查進度；
+  // 手機切到別的 App 導致連線中斷時，回來仍可用工作編號拿到答案。
+  const JOB_ID = /^[A-Za-z0-9_-]{16,64}$/;
+  const JOB_TTL_SEC = 30 * 60;
+
+  function chatError(err) {
+    if (err?.status === 403 || err?.status === 404) {
+      return [502, { error: 'model', message: 'AI 模型尚未啟用或沒有使用權限，請管理員確認 Vertex AI 的 Claude 設定。' }];
+    }
+    if (err?.status === 429) return [429, { error: 'rate', message: 'AI 使用量暫時達到上限，請稍後再試。' }];
+    if (err?.message === '沒有問題內容') return [400, { error: 'empty', message: '請輸入問題' }];
+    if (err instanceof DateRangeError) return [400, { error: 'bad_date', message: err.message }];
+    if (err instanceof Ga4Error) return [502, { error: 'ga4', message: err.message }];
+    console.error(JSON.stringify({ severity: 'ERROR', message: 'dashboard_error', error: String(err?.message || err) }));
+    return [500, { error: 'internal', message: '服務內部錯誤' }];
+  }
+
   router.post('/api/dashboard/chat', requireViewer, express.json({ limit: '64kb' }), async (req, res) => {
     const started = Date.now();
     if (!isSameOrigin(req, config.baseUrl)) return res.status(403).json({ error: 'origin' });
+    const jobId = req.body?.jobId;
+    if (jobId !== undefined && !(typeof jobId === 'string' && JOB_ID.test(jobId))) {
+      return res.status(400).json({ error: 'bad_job', message: '工作編號格式不正確' });
+    }
+    const email = req.viewerEmail;
     const sw = await store.getAccessSwitch();
     if (!sw.enabled) {
-      audit({ event: 'ai_chat', email: req.viewerEmail, status: 'error', reason: 'access_off' });
+      audit({ event: 'ai_chat', email, status: 'error', reason: 'access_off' });
       return res.status(403).json({ error: 'ai_off', message: 'AI 資料存取開關目前關閉，請聯絡管理員開啟。' });
     }
+
+    // 進度依序寫入；寫入失敗不影響回答
+    let chain = Promise.resolve();
+    const save = (data) => {
+      if (!jobId) return chain;
+      chain = chain.then(() => store.saveChatJob(email, jobId, { ...data, updatedAt: new Date().toISOString() }, JOB_TTL_SEC)).catch(() => {});
+      return chain;
+    };
+    if (jobId && (await store.getChatJob(email, jobId))) return res.status(409).json({ error: 'dup_job', message: '這個問題已經送出過了' });
+    save({ status: 'running', step: { phase: 'thinking' } });
+
     try {
       const { current } = parseRange(req.body ?? {});
       const period = `${current.startDate} 至 ${current.endDate}`;
-      const out = await chat.ask({ messages: req.body?.messages, period, today: taipeiToday() });
-      audit({ event: 'ai_chat', email: req.viewerEmail, status: 'ok', kind: out.provider, count: out.tools.length, ms: Date.now() - started });
+      const out = await chat.ask({
+        messages: req.body?.messages,
+        period,
+        today: taipeiToday(),
+        onStep: (step) => save({ status: 'running', step }),
+      });
+      await save({ status: 'done', result: out });
+      audit({ event: 'ai_chat', email, status: 'ok', kind: out.provider, count: out.tools.length, ms: Date.now() - started });
       res.json(out);
     } catch (err) {
-      audit({ event: 'ai_chat', email: req.viewerEmail, status: 'error', reason: String(err?.status ?? err?.constructor?.name), ms: Date.now() - started });
-      if (err?.status === 403 || err?.status === 404) {
-        return res.status(502).json({ error: 'model', message: 'AI 模型尚未啟用或沒有使用權限，請管理員確認 Vertex AI 的 Claude 設定。' });
-      }
-      if (err?.status === 429) return res.status(429).json({ error: 'rate', message: 'AI 使用量暫時達到上限，請稍後再試。' });
-      if (err?.message === '沒有問題內容') return res.status(400).json({ error: 'empty', message: '請輸入問題' });
-      fail(res, err);
+      audit({ event: 'ai_chat', email, status: 'error', reason: String(err?.status ?? err?.constructor?.name), ms: Date.now() - started });
+      const [status, body] = chatError(err);
+      await save({ status: 'error', ...body });
+      res.status(status).json(body);
     }
+  });
+
+  router.get('/api/dashboard/chat/:jobId', requireViewer, async (req, res) => {
+    if (!JOB_ID.test(req.params.jobId)) return res.status(400).json({ error: 'bad_job' });
+    const job = await store.getChatJob(req.viewerEmail, req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'not_found', message: '找不到這個問題的進度（可能已超過 30 分鐘）' });
+    const { status, step, result, error, message } = job;
+    res.json({ status, step, result, error, message });
   });
 
   return {

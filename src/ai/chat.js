@@ -100,10 +100,17 @@ export function createChat({ config, ga4, client, gemini }) {
     }
   }
 
-  async function askClaude(history, system) {
+  // 同一輪要查的多份資料一起查（GA4 用戶端會限制同時數量）
+  const runAll = (calls, used, step) => {
+    step({ phase: 'querying', tools: calls.map((c) => c.name) });
+    return Promise.all(calls.map((c) => callTool(c.name, c.input, used)));
+  };
+
+  async function askClaude(history, system, step) {
     const convo = [...history];
     const used = [];
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      step({ phase: round === 0 ? 'thinking' : 'writing' });
       const res = await client.messages.create({
         model: CHAT_MODEL,
         max_tokens: 2000,
@@ -116,11 +123,9 @@ export function createChat({ config, ga4, client, gemini }) {
         return { reply: reply || NO_ANSWER, tools: used };
       }
       convo.push({ role: 'assistant', content: res.content });
-      const results = [];
-      for (const block of res.content.filter((b) => b.type === 'tool_use')) {
-        const r = await callTool(block.name, block.input, used);
-        results.push({ type: 'tool_result', tool_use_id: block.id, content: r.text, ...(r.ok ? {} : { is_error: true }) });
-      }
+      const blocks = res.content.filter((b) => b.type === 'tool_use');
+      const out = await runAll(blocks, used, step);
+      const results = blocks.map((b, i) => ({ type: 'tool_result', tool_use_id: b.id, content: out[i].text, ...(out[i].ok ? {} : { is_error: true }) }));
       convo.push({ role: 'user', content: results });
     }
     return { reply: TOO_MANY, tools: used };
@@ -130,10 +135,11 @@ export function createChat({ config, ga4, client, gemini }) {
     { functionDeclarations: TOOLS.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema })) },
   ];
 
-  async function askGemini(history, system) {
+  async function askGemini(history, system, step) {
     const contents = history.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
     const used = [];
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      step({ phase: round === 0 ? 'thinking' : 'writing' });
       const res = await gemini.models.generateContent({
         model: FALLBACK_MODEL,
         contents: [...contents],
@@ -142,11 +148,8 @@ export function createChat({ config, ga4, client, gemini }) {
       const calls = res.functionCalls ?? [];
       if (!calls.length) return { reply: (res.text ?? '').trim() || NO_ANSWER, tools: used };
       contents.push(res.candidates?.[0]?.content ?? { role: 'model', parts: calls.map((c) => ({ functionCall: c })) });
-      const parts = [];
-      for (const c of calls) {
-        const r = await callTool(c.name, c.args, used);
-        parts.push({ functionResponse: { id: c.id, name: c.name, response: r.ok ? { result: r.text } : { error: r.text } } });
-      }
+      const out = await runAll(calls.map((c) => ({ name: c.name, input: c.args })), used, step);
+      const parts = calls.map((c, i) => ({ functionResponse: { id: c.id, name: c.name, response: out[i].ok ? { result: out[i].text } : { error: out[i].text } } }));
       contents.push({ role: 'user', parts });
     }
     return { reply: TOO_MANY, tools: used };
@@ -154,17 +157,25 @@ export function createChat({ config, ga4, client, gemini }) {
 
   return {
     // 回傳 { reply, tools, provider }；tools 只列出工具名稱與期間，供畫面顯示「AI 查了什麼」
-    async ask({ messages, period, today }) {
+    // onStep：回報目前進度（思考中／查詢哪些資料／整理回答），供前端顯示
+    async ask({ messages, period, today, onStep }) {
+      const step = (s) => {
+        try {
+          onStep?.(s);
+        } catch {
+          /* 進度回報失敗不影響回答 */
+        }
+      };
       const history = sanitizeHistory(messages);
       if (!history.length) throw new Error('沒有問題內容');
       const system = systemPrompt({ period, today });
       try {
-        return { ...(await askClaude(history, system)), provider: 'claude' };
+        return { ...(await askClaude(history, system, step)), provider: 'claude' };
       } catch (err) {
         if (!gemini || !shouldFallback(err)) throw err;
         console.error(JSON.stringify({ severity: 'WARNING', message: 'claude_fallback', status: err?.status ?? null }));
         try {
-          return { ...(await askGemini(history, system)), provider: 'gemini', fallbackStatus: err?.status ?? null };
+          return { ...(await askGemini(history, system, step)), provider: 'gemini', fallbackStatus: err?.status ?? null };
         } catch (gErr) {
           console.error(JSON.stringify({ severity: 'ERROR', message: 'gemini_failed', status: gErr?.status ?? null, error: String(gErr?.message || gErr) }));
           throw err; // 回報原本 Claude 的錯誤，前端訊息較明確
@@ -182,7 +193,8 @@ async function projectId() {
 // 正式環境的 Vertex 用戶端；專案 ID 由執行環境自動取得，不使用金鑰
 export async function createVertexClient() {
   const { AnthropicVertex } = await import('@anthropic-ai/vertex-sdk');
-  return new AnthropicVertex({ projectId: await projectId(), region: process.env.VERTEX_REGION || 'global' });
+  // 不自動重試：配額不足或故障時立刻改用 Gemini，不讓使用者多等
+  return new AnthropicVertex({ projectId: await projectId(), region: process.env.VERTEX_REGION || 'global', maxRetries: 0 });
 }
 
 export async function createGeminiClient() {

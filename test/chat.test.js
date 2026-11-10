@@ -63,6 +63,40 @@ test('Claude 正常時不呼叫 Gemini', async () => {
   assert.equal(gemini.calls.length, 0);
 });
 
+test('進度回報：思考 → 查詢哪些資料 → 整理回答；同一輪多個工具一起查', async () => {
+  const steps = [];
+  let active = 0;
+  let peak = 0;
+  const slowGa4 = {
+    runReport: async (req) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 20));
+      active--;
+      return ga4.runReport(req);
+    },
+  };
+  const both = [
+    { type: 'tool_use', id: 'a', name: 'ga4_overview', input: { start_date: '2026-11-02', end_date: '2026-11-08' } },
+    { type: 'tool_use', id: 'b', name: 'ga4_overview', input: { start_date: '2026-10-26', end_date: '2026-11-01' } },
+  ];
+  let n = 0;
+  const client = {
+    messages: {
+      create: async () => (n++ === 0 ? { stop_reason: 'tool_use', content: both } : { stop_reason: 'end_turn', content: [{ type: 'text', text: '好' }] }),
+    },
+  };
+  const out = await createChat({ config, ga4: slowGa4, client }).ask({ ...ask, onStep: (s) => steps.push(s) });
+  assert.equal(out.reply, '好');
+  assert.deepEqual(steps, [
+    { phase: 'thinking' },
+    { phase: 'querying', tools: ['ga4_overview', 'ga4_overview'] },
+    { phase: 'writing' },
+  ]);
+  assert.equal(peak, 2, '兩份資料同時查詢');
+  assert.deepEqual(out.tools.map((t) => t.start_date), ['2026-11-02', '2026-10-26'], '順序維持不變');
+});
+
 test('請求錯誤（400）不改用備援', async () => {
   const gemini = fakeGemini();
   await assert.rejects(createChat({ config, ga4, client: claudeFails(400), gemini }).ask(ask), /status 400/);

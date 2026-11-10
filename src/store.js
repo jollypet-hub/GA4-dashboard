@@ -22,6 +22,7 @@ const C = {
   tokens: 'oauth_tokens',
   settings: 'settings',
   users: 'allowed_users',
+  chatJobs: 'chat_jobs',
 };
 const ACCESS_DOC = 'access';
 
@@ -163,6 +164,14 @@ export function createStore() {
     addUser: (email, by) => raw.set(C.users, email, { addedBy: by, addedAt: new Date().toISOString() }),
     removeUser: (email) => raw.del(C.users, email),
     deleteTokensByEmail: (email) => raw.deleteWhere(C.tokens, 'email', email),
+
+    // 「問 AI」的工作進度與結果（短期保存，依使用者隔離；不存問題內容）
+    saveChatJob: (email, jobId, data, ttlSec) =>
+      raw.set(C.chatJobs, sha256(`${email}:${jobId}`), { ...data, expireAt: expiry(ttlSec) }),
+    getChatJob: async (email, jobId) => {
+      const d = await raw.get(C.chatJobs, sha256(`${email}:${jobId}`));
+      return alive(d) ? d : null;
+    },
 
     // 資料存取開關：沒有紀錄時視為「關閉」
     getAccessSwitch: async () => {

@@ -202,6 +202,30 @@ test('問 AI：開關開啟後會呼叫工具並回覆，只傳安全的對話�
   assert.equal(first.tools.length, 6);
 });
 
+test('問 AI：帶工作編號時可查進度與結果，且只有本人查得到', async () => {
+  const jobId = 'a'.repeat(32);
+  const r = await postJson(
+    '/api/dashboard/chat',
+    { start: '2026-11-02', end: '2026-11-08', jobId, messages: [{ role: 'user', content: '營收如何？' }] },
+    { cookie, origin: BASE },
+  );
+  assert.equal(r.status, 200);
+  const job = await (await get(`/api/dashboard/chat/${jobId}`, { cookie })).json();
+  assert.equal(job.status, 'done');
+  assert.match(job.result.reply, /^結論/);
+  assert.equal(job.result.provider, 'claude');
+  assert.equal(job.messages, undefined, '不保存問題內容');
+
+  const dup = await postJson('/api/dashboard/chat', { jobId, messages: [{ role: 'user', content: 'x' }] }, { cookie, origin: BASE });
+  assert.equal(dup.status, 409, '同一個工作編號不能重送');
+
+  const admin = await loginDashboard(ADMIN);
+  assert.equal((await get(`/api/dashboard/chat/${jobId}`, { cookie: admin.cookie })).status, 404, '別人的工作查不到');
+  assert.equal((await get('/api/dashboard/chat/bad!id', { cookie })).status, 400);
+  const bad = await postJson('/api/dashboard/chat', { jobId: 'short', messages: [{ role: 'user', content: 'x' }] }, { cookie, origin: BASE });
+  assert.equal(bad.status, 400);
+});
+
 test('移除使用者後儀表板立即失效', async () => {
   await store.removeUser(MEMBER);
   assert.equal((await get('/api/dashboard/summary', { cookie })).status, 401);

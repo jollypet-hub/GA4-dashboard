@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icons.jsx';
-import { askAi } from '../api.js';
+import { askAi, newJobId, waitAiJob } from '../api.js';
 import { shortDate } from '../format.js';
 
 const TOOL_NAMES = {
@@ -11,6 +11,23 @@ const TOOL_NAMES = {
   ga4_funnel: '購買流程',
   ga4_data_health: '資料健康',
 };
+
+const STORE_KEY = 'ga4-chat-v1';
+const loadSaved = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(STORE_KEY)) ?? {};
+  } catch {
+    return {};
+  }
+};
+
+function stepLabel(step) {
+  if (step?.phase === 'querying' && step.tools?.length) {
+    return `正在查詢：${[...new Set(step.tools.map((t) => TOOL_NAMES[t] ?? t))].join('、')}…`;
+  }
+  if (step?.phase === 'writing') return '正在整理回答…';
+  return 'AI 正在判斷要查哪些資料…';
+}
 
 const SUGGESTIONS = ['這段期間營收變化的主要原因是什麼？', '哪個流量來源帶來最多成交？', '手機和電腦的轉換率差多少？', '跑一次資料健康檢查'];
 
@@ -37,9 +54,42 @@ function RichText({ text }) {
 }
 
 export default function ChatPanel({ open, onClose, aiEnabled, range, pending, onPendingUsed }) {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => loadSaved().messages ?? []);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(null);
+  const [pendingJob, setPendingJob] = useState(() => loadSaved().pendingJob ?? null);
+
+  // 對話與等待中的問題存在這個分頁，頁面被手機重新載入也能接續
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORE_KEY, JSON.stringify({ messages: messages.slice(-30), pendingJob }));
+    } catch {
+      /* 無法儲存時照常使用 */
+    }
+  }, [messages, pendingJob]);
+
+  async function finish(next, promise) {
+    setBusy(true);
+    setStep(null);
+    try {
+      const out = await promise;
+      setMessages([...next, { role: 'assistant', content: out.reply, tools: out.tools, provider: out.provider }]);
+    } catch (err) {
+      const offline = !err.status && err instanceof TypeError;
+      setMessages([...next, { role: 'error', content: offline ? '連線中斷，請確認網路後再問一次。' : err.message }]);
+    } finally {
+      setPendingJob(null);
+      setBusy(false);
+      setStep(null);
+    }
+  }
+
+  // 頁面重新載入時，若還有等待中的問題，繼續查進度
+  useEffect(() => {
+    if (pendingJob && !busy) finish(messages, waitAiJob(pendingJob, { onStep: setStep }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const bodyRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -57,16 +107,10 @@ export default function ChatPanel({ open, onClose, aiEnabled, range, pending, on
     const next = [...messages, { role: 'user', content: q }];
     setMessages(next);
     setInput('');
-    setBusy(true);
-    try {
-      const history = next.filter((m) => m.role === 'user' || m.role === 'assistant').map(({ role, content }) => ({ role, content }));
-      const out = await askAi({ messages: history, start: range.start, end: range.end });
-      setMessages([...next, { role: 'assistant', content: out.reply, tools: out.tools, provider: out.provider }]);
-    } catch (err) {
-      setMessages([...next, { role: 'error', content: err.message }]);
-    } finally {
-      setBusy(false);
-    }
+    const jobId = newJobId();
+    setPendingJob(jobId);
+    const history = next.filter((m) => m.role === 'user' || m.role === 'assistant').map(({ role, content }) => ({ role, content }));
+    await finish(next, askAi({ messages: history, start: range.start, end: range.end, jobId, onStep: setStep }));
   }
 
   // 從儀表板其他地方帶進來的問題（例如「問 AI 怎麼看」）
@@ -116,7 +160,15 @@ export default function ChatPanel({ open, onClose, aiEnabled, range, pending, on
             </div>
           ),
         )}
-        {busy && <div className="typing" aria-label="AI 正在查詢資料"><i /><i /><i /></div>}
+        {busy && (
+          <div className="progress" role="status">
+            <div className="typing" aria-hidden="true"><i /><i /><i /></div>
+            <div>
+              <b>{stepLabel(step)}</b>
+              <span>約需 20–60 秒，可以先切到別的 App，回來答案會在這裡。</span>
+            </div>
+          </div>
+        )}
         {aiEnabled && !busy && (
           <div className="chips">
             {SUGGESTIONS.map((s) => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}
