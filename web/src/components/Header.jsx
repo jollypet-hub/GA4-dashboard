@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icons.jsx';
 import logo from '../assets/jollypet-logo.svg';
 
@@ -10,6 +11,32 @@ const PRESETS = [
 
 export default function Header({ me, range, onPreset, onCustom, compare, onCompare }) {
   const initial = (me?.email || '?').slice(0, 1).toUpperCase();
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef(null);
+
+  // 點選單外面或按 Esc 關閉
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = (e) => {
+      if (e.type === 'keydown' ? e.key === 'Escape' : !menuRef.current?.contains(e.target)) setMenu(false);
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [menu]);
+
+  const actions = (
+    <>
+      {me?.isAdmin && <a className="linkbtn" href="/admin">管理</a>}
+      <form method="post" action="/dashboard/logout" style={{ margin: 0 }}>
+        <button className="linkbtn" type="submit">登出</button>
+      </form>
+    </>
+  );
+
   return (
     <header className="topbar">
       <div className="topbar-in">
@@ -45,13 +72,24 @@ export default function Header({ me, range, onPreset, onCustom, compare, onCompa
           與前期比較
         </label>
 
-        <div className="user">
+        {/* 電腦版：完整顯示帳號與按鈕 */}
+        <div className="user user-full">
           <span className="avatar">{initial}</span>
           <span>{me?.email}</span>
-          {me?.isAdmin && <a className="linkbtn" href="/admin">管理</a>}
-          <form method="post" action="/dashboard/logout" style={{ margin: 0 }}>
-            <button className="linkbtn" type="submit">登出</button>
-          </form>
+          {actions}
+        </div>
+
+        {/* 手機版：只顯示頭像，點開選單 */}
+        <div className="user-compact" ref={menuRef}>
+          <button type="button" className="avatar avatar-btn" aria-haspopup="true" aria-expanded={menu} aria-label={`帳號選單：${me?.email ?? ''}`} onClick={() => setMenu(!menu)}>
+            {initial}
+          </button>
+          {menu && (
+            <div className="user-menu" role="menu">
+              <span className="user-email">{me?.email}</span>
+              {actions}
+            </div>
+          )}
         </div>
       </div>
     </header>
