@@ -70,8 +70,8 @@ a { color: var(--blue-ink); }
 .custom-range input { border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 40px; background: #fff; min-width: 0; max-width: 100%; }
 .user { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .user-compact { display: none; position: relative; }
-.avatar-btn { border: 0; cursor: pointer; width: 40px; height: 40px; font-size: 15px; }
-.avatar-btn[aria-expanded='true'] { background: var(--ink); color: #fff; }
+.avatar-btn { border: 1px solid var(--line); background: #fff; color: var(--ink-2); border-radius: 12px; cursor: pointer; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.avatar-btn[aria-expanded='true'] { background: var(--ink); border-color: var(--ink); color: #fff; }
 .user-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(16, 24, 40, .14); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
 .user-email { font-size: 13px; color: var(--muted); word-break: break-all; padding: 0 2px 4px; border-bottom: 1px solid var(--line-2); }
 .user-menu .linkbtn { width: 100%; justify-content: center; min-height: 40px; }
@@ -255,7 +255,8 @@ td.r, th.r { text-align: right; }
   .user-compact { display: block; order: 2; margin-left: auto; }
   .custom-range { order: 3; }
   .check { order: 4; }
-  .seg button { padding: 8px 10px; }
+  .seg button { padding: 8px 8px; }
+  .avatar-btn { width: 40px; height: 40px; }
   main { padding: 16px; gap: 14px; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .kpis .kpi:first-child { grid-column: 1 / -1; }
@@ -288,5 +289,5 @@ td.r, th.r { text-align: right; }
 /* 很窄的手機（如 iPhone SE 第一代）：日期按鈕再縮，讓頭像留在同一列 */
 @media (max-width: 359px) {
   .seg button { padding: 8px 6px; font-size: 13px; gap: 4px; }
-  .avatar-btn { width: 36px; height: 36px; }
+  .avatar-btn { width: 38px; height: 38px; }
 }

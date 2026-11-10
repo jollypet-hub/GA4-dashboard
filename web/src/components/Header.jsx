@@ -81,8 +81,8 @@ export default function Header({ me, range, onPreset, onCustom, compare, onCompa
 
         {/* 手機版：只顯示頭像，點開選單 */}
         <div className="user-compact" ref={menuRef}>
-          <button type="button" className="avatar avatar-btn" aria-haspopup="true" aria-expanded={menu} aria-label={`帳號選單：${me?.email ?? ''}`} onClick={() => setMenu(!menu)}>
-            {initial}
+          <button type="button" className="avatar-btn" aria-haspopup="true" aria-expanded={menu} aria-label={`設定：${me?.email ?? ''}`} onClick={() => setMenu(!menu)}>
+            <Icon.Gear />
           </button>
           {menu && (
             <div className="user-menu" role="menu">
