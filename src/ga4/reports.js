@@ -332,3 +332,43 @@ export async function dataHealth({ ga4, propertyId, current }) {
     data_notes: dataNotes(daily.metadata, ['這是 GA4 內部一致性檢查；確認是否漏記訂單，仍需與 Cyberbiz 後台訂單數比對。']),
   };
 }
+
+// 每日趨勢：本期每天的工作階段、交易、營收；有比較期間時依「第幾天」對齊前期
+const TREND_METRICS = ['sessions', 'transactions', 'purchaseRevenue'];
+
+export async function dailyTrend({ ga4, propertyId, current, previous }) {
+  const response = await ga4.runReport({
+    property: `properties/${propertyId}`,
+    dateRanges: dateRanges(current, previous),
+    dimensions: [{ name: 'date' }],
+    metrics: TREND_METRICS.map((name) => ({ name })),
+    orderBys: [{ dimension: { dimensionName: 'date' } }],
+    limit: 1000,
+    returnPropertyQuota: true,
+  });
+  const rows = parseTable(response);
+  const base = envelope(response, { propertyId, current, previous });
+  if (rows.length === 0) return { ...base, status: 'no_data', message: NO_DATA_MESSAGE, days: [] };
+
+  const pick = (period) =>
+    Object.fromEntries(rows.filter((r) => (r.dateRange === 'previous' ? 'previous' : 'current') === period).map((r) => [r.date, r]));
+  const cur = pick('current');
+  const prev = previous ? pick('previous') : {};
+  const curDates = eachDate(current.startDate, current.endDate);
+  const prevDates = previous ? eachDate(previous.startDate, previous.endDate) : [];
+
+  const days = curDates.map((d, i) => {
+    const c = cur[d];
+    const p = previous ? prev[prevDates[i]] : null;
+    return {
+      date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+      // GA4 不回傳沒有流量的日子；標示 missing，讓畫面顯示為缺口而不是正常的 0
+      missing: !c,
+      sessions: c?.sessions ?? 0,
+      transactions: c?.transactions ?? 0,
+      purchaseRevenue: c?.purchaseRevenue ?? 0,
+      ...(previous ? { prev_date: prevDates[i], prev_sessions: p?.sessions ?? 0, prev_purchaseRevenue: p?.purchaseRevenue ?? 0 } : {}),
+    };
+  });
+  return { ...base, status: 'ok', days, data_notes: dataNotes(response.metadata) };
+}

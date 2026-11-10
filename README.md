@@ -44,6 +44,15 @@ Claude 自訂連接器 ──OAuth 2.1 + PKCE──► Cloud Run「ga4-mcp」
 | `ga4_funnel` | 封閉式使用者漏斗：瀏覽商品 → 加車 → 開始結帳 → 完成購買（GA4 alpha API；不可用時退回事件總量並明確警告） |
 | `ga4_data_health` | 缺流量的日子、工作階段異常、關鍵事件缺漏、重複 purchase、缺交易 ID、零營收交易 |
 
+## 儀表板（/dashboard）
+
+- 前端：`web/`（React + Vite + Recharts），建置後由 Express 在 `/dashboard` 提供；Dockerfile 多階段建置。
+- 登入：Google 登入＋白名單（管理員或管理頁加入的使用者）；**不受資料存取開關影響**。
+- 資料 API：`/api/dashboard/summary`（經營總覽、每日趨勢、流量來源、裝置、資料健康），同期間快取 1 小時。
+- 問 AI：`/api/dashboard/chat`，Claude on Vertex AI（`claude-sonnet-5-5`、global 端點），沿用執行身分、無金鑰；**受資料存取開關控管**。AI 只能呼叫伺服器端的唯讀報表工具。
+- 執行身分需 `roles/aiplatform.user`，並在 Model Garden 啟用 Claude 模型。
+- 品牌色取自 Jolly Pet Logo 3.0：炭灰 `#393536`、暖褐 `#A5957D`、鼠尾草綠 `#8CB89E`。
+
 ## 設定（環境變數）
 
 見 `.env.example`。兩個機密（`GOOGLE_OAUTH_CLIENT_SECRET`、`SESSION_SECRET`）在 Cloud Run 上由 Secret Manager 掛載，不寫進程式或 repo。

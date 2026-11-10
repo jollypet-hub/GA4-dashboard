@@ -130,7 +130,7 @@ export function createOAuthProvider({ config, store, googleLogin }) {
   };
 
   // Google 登入完成後的回呼，Claude 連線與管理頁共用
-  async function googleCallback(req, res, { onAdminLogin }) {
+  async function googleCallback(req, res, { onAdminLogin, onDashboardLogin }) {
     const { state, code, error } = req.query;
     const pending = typeof state === 'string' ? await store.takePending(state) : null;
     if (!pending) return res.status(400).type('text').send('登入逾時或連結無效，請重新操作。');
@@ -163,6 +163,10 @@ export function createOAuthProvider({ config, store, googleLogin }) {
       return onAdminLogin(res, email);
     }
     if (!(await isAllowed(email))) return deny('此帳號沒有使用權限');
+    if (pending.kind === 'dashboard') {
+      audit({ event: 'dashboard_login', email });
+      return onDashboardLogin(res, email);
+    }
 
     const authCode = randomToken();
     await store.saveCode(

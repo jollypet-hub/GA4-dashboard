@@ -10,9 +10,11 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:web": "npm --prefix web ci && npm --prefix web run build"
   },
   "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^1.1.2",
     "@google-analytics/data": "^7.3.0",
     "@google-cloud/firestore": "^9.4.0",
     "@modelcontextprotocol/sdk": "^1.32.2",

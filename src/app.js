@@ -7,18 +7,20 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createOAuthProvider } from './oauth/provider.js';
 import { createAdmin } from './admin.js';
 import { buildMcpServer } from './mcp.js';
+import { createDashboard } from './dashboard.js';
 
-export function createApp({ config, store, googleLogin, ga4 }) {
+export function createApp({ config, store, googleLogin, ga4, chat }) {
   const app = express();
   app.set('trust proxy', 1); // Cloud Run 前面有一層 Google 前端代理
   app.disable('x-powered-by');
 
   const { provider, googleCallback } = createOAuthProvider({ config, store, googleLogin });
   const admin = createAdmin({ config, store, googleLogin });
+  const dashboard = createDashboard({ config, store, ga4, googleLogin, chat });
   const mcpUrl = new URL(config.mcpUrl);
 
   app.get('/health', (_req, res) => res.type('text').send('ok'));
-  app.get('/', (_req, res) => res.type('text').send('GA4 MCP 連接服務。管理頁：/admin'));
+  app.get('/', (_req, res) => res.redirect('/dashboard'));
 
   // OAuth 授權伺服器：/authorize /token /register /revoke 與 .well-known 中繼資料
   app.use(
@@ -32,10 +34,11 @@ export function createApp({ config, store, googleLogin, ga4 }) {
   );
 
   app.get('/oauth/google/callback', (req, res, next) =>
-    googleCallback(req, res, { onAdminLogin: admin.onAdminLogin }).catch(next),
+    googleCallback(req, res, { onAdminLogin: admin.onAdminLogin, onDashboardLogin: dashboard.onDashboardLogin }).catch(next),
   );
 
   app.use('/admin', admin.router);
+  app.use(dashboard.router);
 
   // MCP 端點：必須帶有效的 Bearer 權杖
   const bearer = requireBearerAuth({
@@ -66,8 +69,9 @@ export function createApp({ config, store, googleLogin, ga4 }) {
 
   // 錯誤處理：不把內部細節回傳給呼叫者
   app.use((err, _req, res, _next) => {
-    console.error(JSON.stringify({ severity: 'ERROR', message: 'unhandled_error', error: String(err?.message || err) }));
-    if (!res.headersSent) res.status(500).type('text').send('服務內部錯誤');
+    const status = Number(err?.status || err?.statusCode) || 500;
+    if (status >= 500) console.error(JSON.stringify({ severity: 'ERROR', message: 'unhandled_error', error: String(err?.message || err) }));
+    if (!res.headersSent) res.status(status).type('text').send(status === 404 ? '找不到' : '服務內部錯誤');
   });
 
   return app;

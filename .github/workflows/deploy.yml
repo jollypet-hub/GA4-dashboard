@@ -28,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Build dashboard
+        run: npm run build:web
 
   deploy:
     needs: test
@@ -56,4 +58,6 @@ jobs:
           URL=$(gcloud run services describe ga4-mcp --region asia-east1 --project "${{ vars.GCP_PROJECT }}" --format='value(status.url)')
           test "$(curl -s "$URL/health")" = "ok"
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/mcp")" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/dashboard/summary")" = "401"
+          test "$(curl -s -o /dev/null -w '%{redirect_url}' "$URL/dashboard")" = "$URL/dashboard/login"
           echo "Deployed and healthy: $URL"

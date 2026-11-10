@@ -6,3 +6,5 @@ test
 README.md
 .github
 scripts
+web/node_modules
+web/dist
