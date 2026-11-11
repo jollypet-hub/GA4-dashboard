@@ -27,9 +27,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      # 先建置前端：部分測試會檢查建置後的檔案（例如主畫面 App 的 manifest 與圖示）
       - name: Build dashboard
         run: npm run build:web
+      - run: npm test
 
   deploy:
     needs: test
