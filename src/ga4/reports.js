@@ -32,6 +32,14 @@ function sum(rows, keys) {
   return out;
 }
 
+// 結帳、付款、登入頁跳轉造成的「假來源」：客人去付款或登入後回到官網，GA4 會把它記成新的來源，
+// 原本帶客人進來的廣告或管道就被切斷。在 GA4 設定「不需要的參照網址」後，新資料不會再出現。
+const CHECKOUT_REDIRECT = /cyberbiz|ecpay|newebpay|jkopay|pay\.line\.me|access\.line\.me/i;
+export const isCheckoutRedirect = (sourceMedium) => {
+  const [source = '', medium = ''] = String(sourceMedium ?? '').split(' / ');
+  return medium.trim() === 'referral' && CHECKOUT_REDIRECT.test(source);
+};
+
 // 依單一維度分組的工作階段報表（流量來源、裝置），可與前期比較
 async function groupedSessionReport({ ga4, propertyId, current, previous, dimension, label, limit }) {
   const response = await ga4.runReport({
@@ -70,6 +78,16 @@ async function groupedSessionReport({ ga4, propertyId, current, previous, dimens
   });
   // 有比較期間時依「增減幅度」排序，最能說明變化的來源排前面
   items.sort((a, b) => (previous ? Math.abs(b.sessions_change) - Math.abs(a.sessions_change) : b.current.sessions - a.current.sessions));
+  // 標示結帳跳轉的假來源，並統計被誤歸到這些來源的成交
+  let redirect = null;
+  if (label === 'source_medium') {
+    const flagged = items.filter((i) => isCheckoutRedirect(i[label]));
+    flagged.forEach((i) => (i.checkout_redirect = true));
+    if (flagged.length) {
+      const t = sum(flagged.map((i) => i.current), ['sessions', 'transactions', 'purchaseRevenue']);
+      redirect = { sources: flagged.map((i) => i[label]), ...t, purchaseRevenue: round(t.purchaseRevenue, 0) };
+    }
+  }
   const omitted = Math.max(0, items.length - limit);
   items = items.slice(0, limit);
 
@@ -81,8 +99,12 @@ async function groupedSessionReport({ ga4, propertyId, current, previous, dimens
     rows_omitted: omitted,
     sort: previous ? '依工作階段增減的絕對值排序' : '依工作階段數排序',
     definitions: SESSION_DEFINITIONS,
+    ...(redirect ? { checkout_redirect_summary: redirect } : {}),
     data_notes: dataNotes(response.metadata, [
       '交易與營收歸屬於工作階段的來源（工作階段範圍），與 GA4 預設的「最後點擊」歸因報表可能不同。',
+      ...(redirect
+        ? [`標示 checkout_redirect 的來源（${redirect.sources.join('、')}）是結帳／付款／登入頁跳轉，不是真正的流量來源；這些成交（${redirect.transactions} 筆、NT$${redirect.purchaseRevenue}）原本應歸屬於客人最初的來源（多半是廣告或自然搜尋），判斷管道成效時不要把它們當成獨立管道。`]
+        : []),
     ]),
   };
 }

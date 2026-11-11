@@ -33,7 +33,10 @@ export default function SourcesTable({ sources, compare, onAsk }) {
                 const color = compare ? (up ? COLORS[i % COLORS.length] : 'var(--red)') : COLORS[i % COLORS.length];
                 return (
                   <tr key={r.source_medium}>
-                    <td><div className="src" title={r.source_medium}><span className="dot" style={{ background: COLORS[i % COLORS.length] }} />{r.source_medium}</div></td>
+                    <td>
+                      <div className="src" title={r.source_medium}><span className="dot" style={{ background: COLORS[i % COLORS.length] }} />{r.source_medium}</div>
+                      {r.checkout_redirect && <span className="tag warn" style={{ marginTop: 4 }} title="客人去付款或登入後跳回官網，被 GA4 記成新來源；這些成交其實屬於客人最初的來源">結帳跳轉，非真正來源</span>}
+                    </td>
                     <td>
                       <div className="bar-cell">
                         <div className="bar" style={{ width: `${Math.max(4, (measure(r) / max) * 140)}px`, background: color }} />
@@ -56,6 +59,12 @@ export default function SourcesTable({ sources, compare, onAsk }) {
             </tbody>
           </table>
         </div>
+      )}
+      {sources?.checkout_redirect_summary && (
+        <p className="foot-note" style={{ marginTop: 10 }}>
+          有 {num(sources.checkout_redirect_summary.transactions)} 筆成交被記在結帳／付款頁跳轉的來源，實際上屬於客人最初的來源（多半是廣告或自然搜尋）。
+          GA4 設定「不需要的參照網址」後，新資料就不會再出現。
+        </p>
       )}
       {rows.length > 0 && compare && (
         <div className="chips" style={{ marginTop: 12 }}>

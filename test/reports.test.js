@@ -187,3 +187,29 @@ test('資料健康：找出缺漏日、缺少事件、重複與缺 ID 的交易'
   assert.match(checks.zero_revenue_purchase.message, /^1 筆/);
   assert.equal(out.days_with_traffic_but_no_sales, 1);
 });
+
+test('結帳跳轉來源：標示 checkout_redirect 並統計被誤歸的成交', async () => {
+  const { trafficSources, isCheckoutRedirect } = await import('../src/ga4/reports.js');
+  assert.equal(isCheckoutRedirect('cyberbizpay.com / referral'), true);
+  assert.equal(isCheckoutRedirect('jollypet.cyberbiz.co / referral'), true);
+  assert.equal(isCheckoutRedirect('access.line.me / referral'), true);
+  assert.equal(isCheckoutRedirect('LINE / OA'), false);
+  assert.equal(isCheckoutRedirect('google / organic'), false);
+  const ga4 = {
+    runReport: async () => ({
+      dimensionHeaders: [{ name: 'sessionSourceMedium' }],
+      metricHeaders: ['sessions', 'totalUsers', 'transactions', 'purchaseRevenue'].map((name) => ({ name })),
+      rows: [
+        ['google / organic', 100, 80, 5, 10000],
+        ['cyberbizpay.com / referral', 20, 10, 3, 9000],
+      ].map(([d, ...m]) => ({ dimensionValues: [{ value: d }], metricValues: m.map((v) => ({ value: String(v) })) })),
+      metadata: {},
+    }),
+  };
+  const out = await trafficSources({ ga4, propertyId: '1', current: { startDate: '2026-11-01', endDate: '2026-11-07', days: 7 }, previous: null, limit: 10 });
+  const pay = out.rows.find((r) => r.source_medium.startsWith('cyberbizpay'));
+  assert.equal(pay.checkout_redirect, true);
+  assert.equal(out.rows[0].checkout_redirect, undefined);
+  assert.deepEqual(out.checkout_redirect_summary, { sources: ['cyberbizpay.com / referral'], sessions: 20, transactions: 3, purchaseRevenue: 9000 });
+  assert.ok(out.data_notes.some((n) => n.includes('結帳／付款／登入頁跳轉')));
+});
