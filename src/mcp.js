@@ -7,6 +7,7 @@ import { DateRangeError, previousPeriod, validateRange } from './ga4/dates.js';
 import { Ga4Error } from './ga4/client.js';
 import { buildOverviewRequest, parseOverview } from './ga4/overview.js';
 import { dataHealth, devices, funnel, products, trafficSources } from './ga4/reports.js';
+import { fieldInventory } from './ga4/inventory.js';
 
 // 各工具共用的日期與資源參數
 const RANGE_SCHEMA = {
@@ -156,6 +157,14 @@ export function buildMcpServer({ config, store, ga4, authInfo }) {
     '檢查期間內的資料品質：沒有流量的日子、工作階段異常波動、關鍵電商事件缺漏、purchase 事件重複觸發（可能重複計算營收）、缺少交易 ID、零營收交易。分析營收前建議先執行。',
     {},
     ({ args: _a, ...ctx }) => dataHealth(ctx),
+  );
+
+  reportTool(
+    'ga4_field_inventory',
+    'GA4 欄位盤點',
+    '盤點 GA4 實際有記錄的資料：事件清單與次數、商品／訂單／流量來源／內容／裝置／地區／使用者等欄位是否有值（有值比例與範例值）、購買相關指標、自訂維度。用來判斷哪些分析做得到、哪些追蹤需要補。查詢量較大，建議期間 30 天。',
+    {},
+    ({ args: _a, ...ctx }) => fieldInventory(ctx),
   );
 
   return server;

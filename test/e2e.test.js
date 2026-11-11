@@ -183,7 +183,7 @@ test('工具清單只有唯讀工具', async () => {
   const r = await mcp(accessToken, 'tools/list');
   assert.equal(r.status, 200);
   const names = r.body.result.tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['ga4_access_status', 'ga4_data_health', 'ga4_devices', 'ga4_funnel', 'ga4_overview', 'ga4_products', 'ga4_traffic_sources']);
+  assert.deepEqual(names, ['ga4_access_status', 'ga4_data_health', 'ga4_devices', 'ga4_field_inventory', 'ga4_funnel', 'ga4_overview', 'ga4_products', 'ga4_traffic_sources']);
   for (const t of r.body.result.tools) assert.equal(t.annotations.readOnlyHint, true);
 });
 

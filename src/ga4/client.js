@@ -85,6 +85,11 @@ export function createGa4Client() {
       const client = await getBeta();
       return call(() => client.runReport(request), { limit });
     },
+    // 欄位清單（含自訂維度／指標定義），唯讀
+    async getMetadata(name) {
+      const client = await getBeta();
+      return call(() => client.getMetadata({ name }), { limit });
+    },
     async runFunnelReport(request) {
       const client = await getAlpha();
       return call(() => client.runFunnelReport(request), { limit });
