@@ -107,7 +107,7 @@ async function loginDashboard(email) {
   assert.equal(r1.status, 302);
   const state = new URL(r1.headers.get('location')).searchParams.get('state');
   const cb = await get(`/oauth/google/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(email)}`);
-  return { status: cb.status, cookie: cb.headers.get('set-cookie')?.split(';')[0], location: cb.headers.get('location') };
+  return { status: cb.status, cookie: cb.headers.get('set-cookie')?.split(';')[0], setCookie: cb.headers.get('set-cookie'), location: cb.headers.get('location') };
 }
 
 test('日期工具：台北時間與最近 7 個完整日', () => {
@@ -123,6 +123,16 @@ test('未登入：頁面導向登入、API 回 401', async () => {
   assert.equal((await get('/api/dashboard/summary')).status, 401);
 });
 
+test('主畫面 App 的 manifest 與圖示不需登入', async () => {
+  const r = await get('/dashboard/pwa/manifest.webmanifest');
+  assert.equal(r.status, 200);
+  const m = JSON.parse(await r.text());
+  assert.equal(m.display, 'standalone');
+  assert.equal(m.start_url, '/dashboard');
+  assert.equal((await get('/dashboard/pwa/apple-touch-icon.png')).status, 200);
+  assert.equal((await get('/dashboard/pwa/nope.png')).status, 404);
+});
+
 test('白名單外的帳號無法登入儀表板', async () => {
   const r = await loginDashboard(MEMBER);
   assert.equal(r.status, 403);
@@ -135,6 +145,7 @@ test('一般使用者加入白名單後可登入、可看資料，且不受開�
   assert.equal(r.status, 302);
   assert.equal(r.location, '/dashboard');
   cookie = r.cookie;
+  assert.match(r.setCookie, /Max-Age=604800/, '儀表板登入保留 7 天');
 
   const me = await (await get('/api/dashboard/me', { cookie })).json();
   assert.equal(me.email, MEMBER);

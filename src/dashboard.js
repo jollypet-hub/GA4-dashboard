@@ -32,7 +32,7 @@ export function lastDays(n, now = Date.now()) {
 }
 
 export function createDashboard({ config, store, ga4, googleLogin, chat }) {
-  const session = createSessionCookie({ name: '__Host-ga4mcp_view', secret: config.sessionSecret, ttlSec: config.adminSessionTtlSec });
+  const session = createSessionCookie({ name: '__Host-ga4mcp_view', secret: config.sessionSecret, ttlSec: config.viewerSessionTtlSec });
   const isAllowed = async (email) => isAdmin(config, email) || !!(await store.getUser(normalizeEmail(email)));
   const cache = new Map();
   const inflight = new Map();
@@ -93,6 +93,9 @@ export function createDashboard({ config, store, ga4, googleLogin, chat }) {
     session.clear(res);
     res.redirect(303, '/dashboard/login');
   });
+
+  // 主畫面 App 用的圖示與 manifest（不需登入，手機取 manifest 時不帶 cookie）
+  router.use('/dashboard/pwa', express.static(path.join(WEB_DIST, 'pwa'), { maxAge: '1d', fallthrough: false }));
 
   router.use(
     '/dashboard/assets',

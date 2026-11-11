@@ -291,3 +291,13 @@ td.r, th.r { text-align: right; }
   .seg button { padding: 8px 6px; font-size: 13px; gap: 4px; }
   .avatar-btn { width: 38px; height: 38px; }
 }
+
+/* 主畫面全螢幕：避開瀏海與底部橫條（一般瀏覽器 env() 為 0，不受影響） */
+.topbar { padding-top: env(safe-area-inset-top); }
+main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.fab { bottom: calc(24px + env(safe-area-inset-bottom)); }
+.chat { padding-top: env(safe-area-inset-top); }
+.chat-form { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+@media (max-width: 640px) {
+  .fab { bottom: calc(16px + env(safe-area-inset-bottom)); }
+}

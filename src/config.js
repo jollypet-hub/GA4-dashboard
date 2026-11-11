@@ -57,6 +57,8 @@ export function loadConfig() {
     authCodeTtlSec: 5 * 60,
     pendingLoginTtlSec: 10 * 60,
     adminSessionTtlSec: 8 * 60 * 60,
+    // 儀表板登入可保留較久（白名單移除仍立即生效，每次請求都會重新檢查）
+    viewerSessionTtlSec: Number(process.env.VIEWER_SESSION_TTL_SEC) || 7 * 24 * 60 * 60,
   });
 }
 
