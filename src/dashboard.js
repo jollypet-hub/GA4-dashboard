@@ -137,7 +137,7 @@ export function createDashboard({ config, store, ga4, googleLogin, chat }) {
         const [overviewRes, trend, sources, device, health] = await Promise.all([
           ga4.runReport(buildOverviewRequest(propertyId, current, previous)),
           dailyTrend(ctx),
-          trafficSources({ ...ctx, limit: 8 }),
+          trafficSources({ ...ctx, limit: 60 }),
           devices(ctx),
           dataHealth({ ga4, propertyId, current }),
         ]);
